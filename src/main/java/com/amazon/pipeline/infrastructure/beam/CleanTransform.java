@@ -15,19 +15,21 @@ import org.apache.beam.sdk.values.TypeDescriptor;
 public class CleanTransform extends PTransform<PCollection<String>, PCollection<AmazonSale>> {
 
     // Metric for every file
-    private final Counter processedSales = Metrics.counter("Sales", "processed_count");
+    private final Counter processedCounter = Metrics.counter("CleanTransform", "processed_sales");
 
     @Override
     public PCollection<AmazonSale> expand(PCollection<String> input) {
-        PCollection<String> dataOnly = input.apply("SkipHeader",
-                Filter.by((String line) -> !line.startsWith("index,Order ID")));
+        return input
+                // PASO 1: Saltar Cabecera
+                .apply("SkipHeader", Filter.by(line -> !line.startsWith("index,Order ID")))
 
-        return dataOnly.apply("LogAndClean", MapElements
-                .into(TypeDescriptor.of(AmazonSale.class))
-                .via((String line) -> {
-                    processedSales.inc();
-                    return SaleValidator.clean(line.split(","));
-                }))
-                .setCoder(SerializableCoder.of(AmazonSale.class));
+                // PASO 2: Limpiar y Parsear usando el Validador de Dominio
+                .apply("CleanAndParse", MapElements.into(TypeDescriptor.of(AmazonSale.class))
+                        .via(line -> {
+                            String[] p = line.split(",");
+                            AmazonSale sale = SaleValidator.clean(p);
+                            processedCounter.inc();
+                            return sale;
+                        }));
     }
 }

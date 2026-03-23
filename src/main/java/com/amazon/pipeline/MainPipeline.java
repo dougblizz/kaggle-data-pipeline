@@ -2,15 +2,11 @@ package com.amazon.pipeline;
 
 import com.amazon.pipeline.application.CleanSalesUseCase;
 import com.amazon.pipeline.domain.SaleRepository;
-import com.amazon.pipeline.infrastructure.persistence.PostgresSaleAdapter;
+import com.amazon.pipeline.infrastructure.persistence.MongoSaleAdapter;
 import org.apache.beam.sdk.Pipeline;
 import org.apache.beam.sdk.PipelineResult;
 import org.apache.beam.sdk.io.TextIO;
-import org.apache.beam.sdk.metrics.MetricsFilter;
-import org.apache.beam.sdk.metrics.MetricNameFilter;
-import org.apache.beam.sdk.metrics.MetricQueryResults;
-import org.apache.beam.sdk.metrics.MetricResult;
-import org.apache.beam.sdk.metrics.MetricResults;
+import org.apache.beam.sdk.metrics.*;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
 import org.apache.beam.sdk.values.PCollection;
 
@@ -24,8 +20,7 @@ public class MainPipeline {
         PCollection<String> input = p.apply("ReadCSV",
                 TextIO.read().from(options.getInputFile()));
 
-        //db - broken right now
-        SaleRepository repository = new PostgresSaleAdapter();
+        SaleRepository repository = new MongoSaleAdapter();
         CleanSalesUseCase useCase = new CleanSalesUseCase(repository);
 
         // company logic
@@ -38,13 +33,15 @@ public class MainPipeline {
 
         // get metrics
         MetricResults metrics = result.metrics();
-        MetricQueryResults results = metrics.queryMetrics(MetricsFilter.builder() // <--- MetricsFilter
-                .addNameFilter(MetricNameFilter.named("Sales", "processed_count"))
+        MetricQueryResults results = metrics.queryMetrics(MetricsFilter.builder()
+                .addNameFilter(MetricNameFilter.named("CleanTransform", "processed_sales"))
+                .addNameFilter(MetricNameFilter.named("Sales", "unique_count"))
                 .build());
 
-        // print metrics
+        // print metrics - para local mientras
         for (MetricResult<Long> counter : results.getCounters()) {
-            System.out.println(">>> REGISTROS PROCESADOS: " + counter.getAttempted());
+            System.out.println(">>> METRICA: " + counter.getName().getName() +
+                    " = " + counter.getAttempted());
         }
     }
 }
