@@ -1,0 +1,8 @@
+{
+  "source": "amazon_sales",
+  "fields": [
+    { "name": "id", "index": 1 },
+    { "name": "amount", "index": 15 },
+    { "name": "category", "index": 8 }
+  ]
+}

@@ -1,3 +1,4 @@
+/*
 package com.amazon.pipeline.infrastructure.persistence.mongo;
 
 import com.amazon.pipeline.domain.AmazonSale;
@@ -65,3 +66,4 @@ public class MongoSaleAdapter implements SaleRepository {
         }
     }
 }
+*/

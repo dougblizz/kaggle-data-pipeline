@@ -1,27 +1,38 @@
 package com.amazon.pipeline.application;
 
-import com.amazon.pipeline.domain.AmazonSale;
+import com.amazon.pipeline.domain.FieldMetadata;
 import com.amazon.pipeline.domain.SaleRepository;
-import com.amazon.pipeline.infrastructure.beam.CleanTransform;
-import org.apache.beam.sdk.transforms.Distinct;
+import org.apache.beam.sdk.schemas.Schema;
 import org.apache.beam.sdk.values.PCollection;
-import org.apache.beam.sdk.values.TypeDescriptors;
+import org.apache.beam.sdk.values.Row;
 
-public class CleanSalesUseCase {
+import java.io.Serializable;
+import java.util.List;
+
+public class CleanSalesUseCase implements Serializable {
     private final SaleRepository repository;
+    private final List<FieldMetadata> metadata;
 
-    public CleanSalesUseCase(SaleRepository repository) {
+    public CleanSalesUseCase(SaleRepository repository, List<FieldMetadata> metadata) {
         this.repository = repository;
+        this.metadata = metadata;
     }
 
     public void execute(PCollection<String> rawLines) {
-        PCollection<AmazonSale> domainSales = rawLines.apply("CleanData", new CleanTransform());
+        Schema beamSchema = createSchemaFromMetadata(metadata);
 
-        // Deduplication by ID before persisting
-        PCollection<AmazonSale> uniqueSales = domainSales.apply("DeduplicateById",
-                Distinct.withRepresentativeValueFn(AmazonSale::id)
-                        .withRepresentativeType(TypeDescriptors.strings()));
+        // Usamos la transformación que encapsula la lógica
+        PCollection<Row> cleanRows = rawLines.apply("ProcessData",
+                new CleanTransform(metadata, beamSchema));
 
-        repository.save(uniqueSales);
+        repository.saveRows(cleanRows);
+    }
+
+    private Schema createSchemaFromMetadata(List<FieldMetadata> metadata) {
+        Schema.Builder builder = Schema.builder();
+        for (FieldMetadata field : metadata) {
+            builder.addStringField(field.name());
+        }
+        return builder.build();
     }
 }
