@@ -2,7 +2,7 @@ package com.amazon.pipeline;
 
 import com.amazon.pipeline.application.CleanSalesUseCase;
 import com.amazon.pipeline.domain.SaleRepository;
-import com.amazon.pipeline.infrastructure.persistence.MongoSaleAdapter;
+import com.amazon.pipeline.infrastructure.persistence.mongo.MongoSaleAdapter;
 import org.apache.beam.sdk.Pipeline;
 import org.apache.beam.sdk.PipelineResult;
 import org.apache.beam.sdk.io.TextIO;
@@ -20,7 +20,10 @@ public class MainPipeline {
         PCollection<String> input = p.apply("ReadCSV",
                 TextIO.read().from(options.getInputFile()));
 
-        SaleRepository repository = new MongoSaleAdapter();
+        SaleRepository repository = new MongoSaleAdapter(
+                "mongodb://admin:secret_pass@localhost:27017",
+                "amazon_data"
+        );
         CleanSalesUseCase useCase = new CleanSalesUseCase(repository);
 
         // company logic

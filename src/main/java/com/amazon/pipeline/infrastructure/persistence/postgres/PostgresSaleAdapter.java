@@ -1,4 +1,4 @@
-package com.amazon.pipeline.infrastructure.persistence;
+package com.amazon.pipeline.infrastructure.persistence.postgres;
 
 import com.amazon.pipeline.domain.AmazonSale;
 import com.amazon.pipeline.domain.SaleRepository;
