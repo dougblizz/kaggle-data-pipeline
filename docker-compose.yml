@@ -1,0 +1,12 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: sales_db
+    environment:
+      POSTGRES_DB: amazon_sales
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
