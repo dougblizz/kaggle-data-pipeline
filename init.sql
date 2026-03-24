@@ -1,5 +1,0 @@
-CREATE TABLE IF NOT EXISTS sales (
-    id VARCHAR(255) PRIMARY KEY,
-    amount DOUBLE PRECISION,
-    category VARCHAR(255)
-);

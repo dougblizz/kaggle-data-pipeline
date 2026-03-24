@@ -1,18 +1,18 @@
 package com.amazon.pipeline;
 
 import com.amazon.pipeline.application.CleanSalesUseCase;
+import com.amazon.pipeline.domain.FieldMetadata;
 import com.amazon.pipeline.domain.SaleRepository;
-import com.amazon.pipeline.infrastructure.persistence.PostgresSaleAdapter;
+import com.amazon.pipeline.infrastructure.MetadataLoader;
+import com.amazon.pipeline.infrastructure.persistence.mongo.MongoGenericAdapter;
 import org.apache.beam.sdk.Pipeline;
 import org.apache.beam.sdk.PipelineResult;
 import org.apache.beam.sdk.io.TextIO;
-import org.apache.beam.sdk.metrics.MetricsFilter;
-import org.apache.beam.sdk.metrics.MetricNameFilter;
-import org.apache.beam.sdk.metrics.MetricQueryResults;
-import org.apache.beam.sdk.metrics.MetricResult;
-import org.apache.beam.sdk.metrics.MetricResults;
+import org.apache.beam.sdk.metrics.*;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
 import org.apache.beam.sdk.values.PCollection;
+
+import java.util.List;
 
 public class MainPipeline {
     public static void main(String[] args) {
@@ -24,9 +24,16 @@ public class MainPipeline {
         PCollection<String> input = p.apply("ReadCSV",
                 TextIO.read().from(options.getInputFile()));
 
-        //db - broken right now
-        SaleRepository repository = new PostgresSaleAdapter();
-        CleanSalesUseCase useCase = new CleanSalesUseCase(repository);
+        // carga metadata  - path
+        List<FieldMetadata> metadata = MetadataLoader.load("src/main/resources/pipeline-metadata.json");
+
+        // connection db
+        SaleRepository repository = new MongoGenericAdapter(
+                "mongodb://admin:secret_pass@localhost:27017",
+                "amazon_data"
+        );
+
+        CleanSalesUseCase useCase = new CleanSalesUseCase(repository, metadata);
 
         // company logic
         useCase.execute(input);
@@ -35,16 +42,17 @@ public class MainPipeline {
         PipelineResult result = p.run();
         result.waitUntilFinish();
 
+        MetricsFilter filter = MetricsFilter.builder()
+                .addNameFilter(MetricNameFilter.named("CleanTransform", "processed_sales"))
+                .addNameFilter(MetricNameFilter.named("Sales", "unique_count"))
+                .build();
 
-        // get metrics
-        MetricResults metrics = result.metrics();
-        MetricQueryResults results = metrics.queryMetrics(MetricsFilter.builder() // <--- MetricsFilter
-                .addNameFilter(MetricNameFilter.named("Sales", "processed_count"))
-                .build());
+        MetricQueryResults results = result.metrics().queryMetrics(filter);
 
-        // print metrics
+        // print metrics - para local mientras
         for (MetricResult<Long> counter : results.getCounters()) {
-            System.out.println(">>> REGISTROS PROCESADOS: " + counter.getAttempted());
+            System.out.println(">>> METRIC: " + counter.getName().getName() +
+                    " = " + counter.getAttempted());
         }
     }
 }

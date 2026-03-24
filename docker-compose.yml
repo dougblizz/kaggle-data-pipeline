@@ -1,12 +1,9 @@
 services:
-  db:
-    image: postgres:16-alpine
-    container_name: sales_db
-    environment:
-      POSTGRES_DB: amazon_sales
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: secret_pass
+  mongodb:
+    image: mongo:latest
+    container_name: sales_nosql
     ports:
-      - "5432:5432"
-    volumes:
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: secret_pass
