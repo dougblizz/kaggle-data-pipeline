@@ -24,17 +24,15 @@ public class MainPipeline {
         PCollection<String> input = p.apply("ReadCSV",
                 TextIO.read().from(options.getInputFile()));
 
-        // 1. CARGA DE METADATOS (Nuevo)
-        // Puedes usar Jackson o Gson para leer el pipeline-metadata.json
+        // carga metadata  - path
         List<FieldMetadata> metadata = MetadataLoader.load("src/main/resources/pipeline-metadata.json");
 
-        // 2. ADAPTADOR GENÉRICO (Actualizado)
+        // connection db
         SaleRepository repository = new MongoGenericAdapter(
                 "mongodb://admin:secret_pass@localhost:27017",
                 "amazon_data"
         );
 
-        // 3. INYECCIÓN DE METADATOS (Cambio en constructor)
         CleanSalesUseCase useCase = new CleanSalesUseCase(repository, metadata);
 
         // company logic
@@ -44,23 +42,16 @@ public class MainPipeline {
         PipelineResult result = p.run();
         result.waitUntilFinish();
 
-
-        // 5. RECUPERACIÓN DE MÉTRICAS (Tu código original)
-        // Aquí es donde definimos el 'filter' explícitamente
         MetricsFilter filter = MetricsFilter.builder()
                 .addNameFilter(MetricNameFilter.named("CleanTransform", "processed_sales"))
-                .addNameFilter(MetricNameFilter.named("MongoAdapter", "db_writes"))
+                .addNameFilter(MetricNameFilter.named("Sales", "unique_count"))
                 .build();
 
         MetricQueryResults results = result.metrics().queryMetrics(filter);
 
-        // 6. PERSISTENCIA DE MÉTRICAS EN MONGO (Feature recuperada)
-        // Guardamos el resultado de las métricas en la colección 'pipeline_stats'
-        repository.saveMetrics(results);
-
         // print metrics - para local mientras
         for (MetricResult<Long> counter : results.getCounters()) {
-            System.out.println(">>> METRICA: " + counter.getName().getName() +
+            System.out.println(">>> METRIC: " + counter.getName().getName() +
                     " = " + counter.getAttempted());
         }
     }

@@ -11,7 +11,6 @@ public class GenericParser implements Serializable {
     public static Row parse(String[] raw, Schema schema, List<FieldMetadata> metadata) {
         Row.Builder builder = Row.withSchema(schema);
         for (FieldMetadata field : metadata) {
-            // Entrada y salida como String (sin casting en el parser)
             builder.addValue(raw[field.index()]);
         }
         return builder.build();

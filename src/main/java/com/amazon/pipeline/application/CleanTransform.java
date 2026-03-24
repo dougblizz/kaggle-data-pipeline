@@ -26,10 +26,10 @@ public class CleanTransform extends PTransform<PCollection<String>, PCollection<
                             processedCounter.inc();
                             String[] fields = line.split(",");
 
-                            // Parseo dinámico
+                            // dynamic parsing
                             Row rawRow = GenericParser.parse(fields, schema, metadata);
 
-                            // Limpieza dinámica (usando los nombres del JSON)
+                            // Dynamic cleaning (using the JSON names)
                             return Row.withSchema(schema)
                                     .addValue(rawRow.getString("id"))
                                     .addValue(DataCleanser.formatAmount(rawRow.getString("amount")))
