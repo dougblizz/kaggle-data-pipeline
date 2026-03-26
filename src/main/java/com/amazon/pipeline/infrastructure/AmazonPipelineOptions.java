@@ -1,4 +1,4 @@
-package com.amazon.pipeline;
+package com.amazon.pipeline.infrastructure;
 
 import org.apache.beam.sdk.options.Default;
 import org.apache.beam.sdk.options.Description;

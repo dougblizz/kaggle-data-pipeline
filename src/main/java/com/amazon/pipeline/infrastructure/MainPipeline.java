@@ -1,10 +1,11 @@
-package com.amazon.pipeline;
+package com.amazon.pipeline.infrastructure;
 
 import com.amazon.pipeline.application.CleanSalesUseCase;
 import com.amazon.pipeline.domain.FieldMetadata;
 import com.amazon.pipeline.domain.SaleRepository;
-import com.amazon.pipeline.infrastructure.MetadataLoader;
+import com.amazon.pipeline.infrastructure.persistence.mongo.MetadataLoader;
 import com.amazon.pipeline.infrastructure.persistence.mongo.MongoGenericAdapter;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.beam.sdk.Pipeline;
 import org.apache.beam.sdk.PipelineResult;
 import org.apache.beam.sdk.io.TextIO;
@@ -14,6 +15,7 @@ import org.apache.beam.sdk.values.PCollection;
 
 import java.util.List;
 
+@Slf4j
 public class MainPipeline {
     public static void main(String[] args) {
         AmazonPipelineOptions options = PipelineOptionsFactory.fromArgs(args)
@@ -30,7 +32,8 @@ public class MainPipeline {
         // connection db
         SaleRepository repository = new MongoGenericAdapter(
                 "mongodb://admin:secret_pass@localhost:27017",
-                "amazon_data"
+                "amazon_data",
+                "sales"
         );
 
         CleanSalesUseCase useCase = new CleanSalesUseCase(repository, metadata);
@@ -51,8 +54,7 @@ public class MainPipeline {
 
         // print metrics - para local mientras
         for (MetricResult<Long> counter : results.getCounters()) {
-            System.out.println(">>> METRIC: " + counter.getName().getName() +
-                    " = " + counter.getAttempted());
+            log.info(">>> METRIC: {} = {}", counter.getName().getName(), counter.getAttempted());
         }
     }
 }
