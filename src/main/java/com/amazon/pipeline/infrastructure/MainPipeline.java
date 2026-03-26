@@ -19,7 +19,11 @@ import java.util.List;
 public class MainPipeline {
     public static void main(String[] args) {
         AmazonPipelineOptions options = PipelineOptionsFactory.fromArgs(args)
+                .withValidation()
                 .as(AmazonPipelineOptions.class);
+
+        System.setProperty("beamDirectRunnerMaxBundleSize", "10000");
+        System.setProperty("targetParallelism", "1");
 
         Pipeline p = Pipeline.create(options);
 
@@ -31,9 +35,9 @@ public class MainPipeline {
 
         // connection db
         SaleRepository repository = new MongoGenericAdapter(
-                "mongodb://admin:secret_pass@localhost:27017",
-                "amazon_data",
-                "sales"
+                options.getMongoUri(),
+                options.getDatabase(),
+                options.getCollection()
         );
 
         CleanSalesUseCase useCase = new CleanSalesUseCase(repository, metadata);
@@ -44,6 +48,9 @@ public class MainPipeline {
         // get result
         PipelineResult result = p.run();
         result.waitUntilFinish();
+
+        log.info(">>> Pipeline complete. Forcing out.");
+        System.exit(0);
 
         MetricsFilter filter = MetricsFilter.builder()
                 .addNameFilter(MetricNameFilter.named("CleanTransform", "processed_sales"))

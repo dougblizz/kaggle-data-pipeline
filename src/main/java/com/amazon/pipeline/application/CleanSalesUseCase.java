@@ -4,10 +4,13 @@ import com.amazon.pipeline.domain.FieldMetadata;
 import com.amazon.pipeline.domain.SaleRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.beam.sdk.metrics.Counter;
+import org.apache.beam.sdk.metrics.Metrics;
 import org.apache.beam.sdk.schemas.Schema;
 import org.apache.beam.sdk.transforms.*;
 import org.apache.beam.sdk.values.PCollection;
 import org.apache.beam.sdk.values.Row;
+import org.apache.beam.sdk.values.TypeDescriptor;
 import org.apache.commons.lang3.StringUtils;
 
 import java.io.Serializable;
@@ -34,7 +37,8 @@ public class CleanSalesUseCase implements Serializable {
 
             // Transform and cleansing
             PCollection<Row> cleanRows = rawLines.apply("ProcessData",
-                    new CleanTransform(metadata, beamSchema));
+                            new CleanTransform(metadata, beamSchema))
+                    .setRowSchema(beamSchema);
 
             // Filter out invalid rows before deduplication
             PCollection<Row> validRows = cleanRows.apply("FilterInvalidRows",
@@ -42,18 +46,22 @@ public class CleanSalesUseCase implements Serializable {
 
             // Deduplication and metric for unique records
             PCollection<Row> distinctRows = validRows.apply("DeduplicateByEntityKey",
-                    Distinct.withRepresentativeValueFn(row -> row.getString(entityKeyField)));
+                    Distinct.<Row, String>withRepresentativeValueFn(row -> row.getString(entityKeyField))
+                            .withRepresentativeType(TypeDescriptor.of(String.class)));
 
             // Metrics
-            distinctRows.apply("CountUnique", Count.globally())
-                    .apply("LogMetrics", ParDo.of(new DoFn<Long, Void>() {
-                        @ProcessElement
-                        public void process(@Element Long count) {
-                            log.info("Total unique records to persist: {}", count);
-                        }
-                    }));
+            PCollection<Row> finalRows = distinctRows.apply("MetricsAndLog", ParDo.of(new DoFn<Row, Row>() {
+                        private final Counter uniqueCounter = Metrics.counter("Sales", "unique_count");
 
-            repository.saveRows(distinctRows, entityKeyField);
+                        @ProcessElement
+                        public void processElement(@Element Row row, OutputReceiver<Row> out) {
+                            uniqueCounter.inc();
+                            out.output(row);
+                        }
+                    }))
+                    .setRowSchema(beamSchema);
+
+            repository.saveRows(finalRows, entityKeyField);
         } catch (Exception e) {
             throw new IllegalArgumentException("Error cleansing records in pipeline. Refer to CleanTransform method for validation logic.");
         }
