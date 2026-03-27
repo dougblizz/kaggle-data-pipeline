@@ -1,5 +1,6 @@
 package com.amazon.pipeline.infrastructure.persistence.mongo;
 
+import com.amazon.pipeline.domain.utils.HashUtils;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
@@ -17,7 +18,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-import static com.amazon.pipeline.domain.utils.HashUtils.sha256Hash;
+import static com.amazon.pipeline.domain.utils.HashUtils.generateId;
 import static com.amazon.pipeline.infrastructure.persistence.mongo.mappers.MongoDocumentMapper.toDocument;
 
 @Slf4j
@@ -51,7 +52,7 @@ public class MongoWriterDoFn extends DoFn<Row, Void> {
 
             if (rawId == null) return;
 
-            String hashedId = sha256Hash(rawId.trim());
+            String hashedId = HashUtils.generateId(rawId);
             doc.put("_id", hashedId);
 
             SHARED_BATCH.add(new ReplaceOneModel<>(
@@ -70,8 +71,12 @@ public class MongoWriterDoFn extends DoFn<Row, Void> {
 
     @FinishBundle
     public void finishBundle() {
-        if (SHARED_BATCH.size() >= BATCH_SIZE) {
-            flush();
+        try {
+            if (!SHARED_BATCH.isEmpty()) {
+                flush();
+            }
+        } catch (Exception e) {
+            log.error("[MONGO-FINISH-BUNDLE-ERROR] {}", e.getMessage());
         }
     }
 

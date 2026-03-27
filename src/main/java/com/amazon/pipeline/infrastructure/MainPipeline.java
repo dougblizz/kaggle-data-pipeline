@@ -82,6 +82,7 @@ public class MainPipeline {
             MetricQueryResults metrics = result.metrics().queryMetrics(MetricsFilter.builder()
                     .addNameFilter(MetricNameFilter.named("CleanTransform", "processed_sales"))
                     .addNameFilter(MetricNameFilter.named("Sales", "unique_count"))
+                    .addNameFilter(MetricNameFilter.named("Audit", "total_records_sent"))
                     .build());
 
             for (MetricResult<Long> counter : metrics.getCounters()) {

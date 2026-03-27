@@ -2,6 +2,7 @@ package com.amazon.pipeline.application;
 
 import com.amazon.pipeline.domain.FieldMetadata;
 import com.amazon.pipeline.domain.SaleRepository;
+import com.amazon.pipeline.domain.utils.HashUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.beam.sdk.metrics.Counter;
@@ -11,29 +12,35 @@ import org.apache.beam.sdk.transforms.*;
 import org.apache.beam.sdk.values.PCollection;
 import org.apache.beam.sdk.values.Row;
 import org.apache.beam.sdk.values.TypeDescriptor;
+import org.apache.beam.sdk.values.TypeDescriptors;
 import org.apache.commons.lang3.StringUtils;
 
 import java.io.Serializable;
 import java.util.List;
 
 @Slf4j
-@RequiredArgsConstructor
 public class CleanSalesUseCase implements Serializable {
     private final SaleRepository repository;
     private final List<FieldMetadata> metadata;
+    private final String entityKeyField;
+
+    public CleanSalesUseCase(SaleRepository repository, List<FieldMetadata> metadata) {
+        this.repository = repository;
+        this.metadata = metadata;
+
+        // Calculamos la llave una sola vez al instanciar el caso de uso
+        this.entityKeyField = metadata.stream()
+                .filter(FieldMetadata::isEntityKey)
+                .map(FieldMetadata::name)
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException(
+                        "BUSINESS ERROR: No 'isEntityKey' has been defined in the metadata."
+                ));
+    }
 
     public void execute(PCollection<String> rawLines) {
         try {
             Schema beamSchema = createSchemaFromMetadata(metadata);
-
-            // Search entityKey, if it fails then throw a custom Exception
-            String entityKeyField = metadata.stream()
-                    .filter(FieldMetadata::isEntityKey)
-                    .map(FieldMetadata::name)
-                    .findFirst()
-                    .orElseThrow(() -> new RuntimeException(
-                            "BUSINESS ERROR: No 'isEntityKey' has been defined in the metadata. It is mandatory to designate a field as a unique key."
-                    ));
 
             // Transform and cleansing
             PCollection<Row> cleanRows = rawLines.apply("ProcessData",
@@ -45,14 +52,16 @@ public class CleanSalesUseCase implements Serializable {
                     Filter.by(row -> isValidRow(row, entityKeyField)));
 
             // Deduplication and metric for unique records
-            PCollection<Row> distinctRows = validRows.apply("DeduplicateByEntityKey",
-                    Distinct.<Row, String>withRepresentativeValueFn(row -> row.getString(entityKeyField))
+            PCollection<Row> distinctRows = validRows
+                    .apply("DistinctByNormalizedId", Distinct.<Row, String>withRepresentativeValueFn(row ->
+                                    HashUtils.normalize(row.getString(entityKeyField))
+                            )
                             .withRepresentativeType(TypeDescriptor.of(String.class)));
+
 
             // Metrics
             PCollection<Row> finalRows = distinctRows.apply("MetricsAndLog", ParDo.of(new DoFn<Row, Row>() {
                         private final Counter uniqueCounter = Metrics.counter("Sales", "unique_count");
-
                         @ProcessElement
                         public void processElement(@Element Row row, OutputReceiver<Row> out) {
                             uniqueCounter.inc();
