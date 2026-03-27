@@ -4,10 +4,7 @@ import com.amazon.pipeline.domain.utils.HashUtils;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.ReplaceOneModel;
-import com.mongodb.client.model.ReplaceOptions;
-import com.mongodb.client.model.WriteModel;
+import com.mongodb.client.model.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.beam.sdk.transforms.DoFn;
@@ -24,103 +21,75 @@ import static com.amazon.pipeline.infrastructure.persistence.mongo.mappers.Mongo
 @Slf4j
 @RequiredArgsConstructor
 public class MongoWriterDoFn extends DoFn<Row, Void> {
-    private static final int BATCH_SIZE = 500;
-    private static final int MAX_RETRIES = 3;
-    private static volatile MongoClient staticClient;
-    private static final List<WriteModel<Document>> SHARED_BATCH = Collections.synchronizedList(new ArrayList<>());
     private final String connectionString;
-    private final String databaseName;
+    private final String dbName;
     private final String collectionName;
     private final String keyField;
+    private final int batchSize;
+
+    // Buffer local por cada hilo (Worker)
+    private transient List<WriteModel<Document>> bulkOperations;
+    private transient MongoClient mongoClient;
+    private transient MongoCollection<Document> collection;
 
     @Setup
     public void setup() {
-        if (staticClient == null) {
-            synchronized (MongoWriterDoFn.class) {
-                if (staticClient == null) {
-                    staticClient = MongoClients.create(connectionString);
-                }
-            }
-        }
+        this.mongoClient = MongoClients.create(connectionString);
+        this.collection = mongoClient.getDatabase(dbName).getCollection(collectionName);
+        this.bulkOperations = new ArrayList<>();
     }
 
     @ProcessElement
     public void process(@Element Row row) {
         try {
-            Document doc = toDocument(row);
             String rawId = row.getString(keyField);
-
             if (rawId == null) return;
 
-            String hashedId = HashUtils.generateId(rawId);
-            doc.put("_id", hashedId);
+            // 1. Normalización y Hashing (Consistencia total)
+            String normalizedId = HashUtils.normalize(rawId);
+            String hashedId = HashUtils.generateId(normalizedId);
 
-            SHARED_BATCH.add(new ReplaceOneModel<>(
+            Document doc = toDocument(row);
+            doc.put("_id", hashedId); // ID único para evitar duplicados en Mongo
+
+            // 2. Agregamos a la lista de operaciones Bulk (Upsert)
+            bulkOperations.add(new ReplaceOneModel<>(
                     Filters.eq("_id", hashedId),
                     doc,
                     new ReplaceOptions().upsert(true)
             ));
 
-            if (SHARED_BATCH.size() >= BATCH_SIZE) {
+            // 3. Si llegamos al límite, disparamos el Bulk
+            if (bulkOperations.size() >= batchSize) {
                 flush();
             }
         } catch (Exception e) {
-            log.error("[MONGO-PROCESS-ERROR] {}", e.getMessage());
+            log.error("[MONGO-PROCESS-ERROR] Error preparando registro: {}", e.getMessage());
         }
     }
 
     @FinishBundle
     public void finishBundle() {
+        flush(); // El salvavidas de los últimos registros
+    }
+
+    private void flush() {
+        if (bulkOperations.isEmpty()) return;
+
         try {
-            if (!SHARED_BATCH.isEmpty()) {
-                flush();
-            }
+            // Ejecución masiva: Mucho más rápido que insertar uno por uno
+            collection.bulkWrite(bulkOperations, new BulkWriteOptions().ordered(false));
+            bulkOperations.clear();
         } catch (Exception e) {
-            log.error("[MONGO-FINISH-BUNDLE-ERROR] {}", e.getMessage());
+            log.error("[MONGO-FLUSH-ERROR] Error en escritura masiva: {}", e.getMessage());
+            // Aquí podrías implementar una lógica de reintento o Dead Letter Queue
         }
     }
 
     @Teardown
     public void teardown() {
-        synchronized (MongoWriterDoFn.class) {
-            if (staticClient != null) {
-                log.info("[MONGO-SHUTDOWN] Closing connection pool...");
-                staticClient.close();
-                staticClient = null;
-            }
-        }
-    }
-
-    private void flush() {
-        if (SHARED_BATCH.isEmpty()) return;
-
-        synchronized (SHARED_BATCH) {
-            if (SHARED_BATCH.isEmpty()) return;
-
-            MongoCollection<Document> collection = staticClient
-                    .getDatabase(databaseName)
-                    .getCollection(collectionName);
-
-            List<WriteModel<Document>> toWrite = new ArrayList<>(SHARED_BATCH);
-            SHARED_BATCH.clear();
-
-            int attempts = 0;
-            while (attempts < MAX_RETRIES) {
-                try {
-                    log.warn("[MONGO-BULK] Writing batch of {} records...", toWrite.size());
-                    collection.bulkWrite(toWrite);
-                    log.warn("[MONGO-SUCCESS] Writing completed.");
-                    return;
-                } catch (Exception e) {
-                    attempts++;
-                    log.warn("[MONGO-RETRY] Attempt {} failed: {}", attempts, e.getMessage());
-                    if (attempts >= MAX_RETRIES) {
-                        log.error("[CRITICAL] {} records were lost", toWrite.size());
-                    } else {
-                        try { Thread.sleep(1000L * attempts); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
-                    }
-                }
-            }
+        if (mongoClient != null) {
+            mongoClient.close();
         }
     }
 }

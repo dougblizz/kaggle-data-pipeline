@@ -13,11 +13,12 @@ public class MongoGenericAdapter implements SaleRepository, Serializable {
     private final String connectionString;
     private final String databaseName;
     private final String collectionName;
+    int batchSize = 1000;
 
     @Override
     public void saveRows(PCollection<Row> rows, String entityKeyField) {
         rows.apply("WriteToMongo", ParDo.of(
-                new MongoWriterDoFn(connectionString, databaseName, collectionName, entityKeyField)
+                new MongoWriterDoFn(connectionString, databaseName, collectionName, entityKeyField, batchSize)
         ));
     }
 }
