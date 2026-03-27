@@ -1,0 +1,10 @@
+# --- INFRASTRUCTURE CONFIGURATION ---
+# Format: mongodb://[user]:[pass]@[host]:[port]
+mongo.uri=mongodb://user:password@localhost:27017
+mongo.db=your_db_name
+mongo.collection=collection_name
+
+# --- FILE CONFIGURATION ---
+# Relative paths from the project root or absolute paths
+input.file=src/main/resources/your_data_file.csv
+metadata.path=src/main/resources/your_metadata.json
