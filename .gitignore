@@ -31,3 +31,4 @@ build/
 .idea/
 *.iml
 out/
+src/main/resources/application.properties
